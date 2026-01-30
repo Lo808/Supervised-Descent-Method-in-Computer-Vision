@@ -6,10 +6,18 @@ from src.image import Image,ImageFactory
 
 def read_pts(filename):
     """
-    Read .pts file
+    Read landmarks .pts file safely.
+    Returns None if the file is missing or empty.
     """
-    with open(filename, 'r') as f:
-        lines = f.readlines()
+    
+    if not os.path.exists(filename):
+        return None
+
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        return None
 
     landmarks = []
     start_reading = False
@@ -24,15 +32,20 @@ def read_pts(filename):
             break
             
         if start_reading:
-            
             parts = line.split()
             if len(parts) >= 2:
-                x = float(parts[0])
-                y = float(parts[1])
-                landmarks.append([x, y])
                 
+                try:
+                    x = float(parts[0])
+                    y = float(parts[1])
+                    landmarks.append([x, y])
+                except ValueError:
+                    continue
+                
+    if not landmarks:
+        return None
+        
     return np.array(landmarks)
-
 def compute_mean_shape(landmarks_list):
     """
     Computes the mean shape from the training set of landmarks
@@ -80,7 +93,11 @@ def get_data(data_folder, train_split=0.8):
         base_name = os.path.splitext(img_path)[0]
         pts_path = base_name + ".pts"
         
-            
+        pts_path = base_name + ".pts"
+        landmarks = read_pts(pts_path)
+        if landmarks is None:
+            continue
+
         # Lecture Image
         img = cv2.imread(img_path)
         if img is None:

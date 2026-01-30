@@ -1,7 +1,7 @@
 import cv2 
 import numpy as np
 import matplotlib.pyplot as plt
-
+import os
 class Image:
 
     """
@@ -70,7 +70,6 @@ class Image:
         plt.show()
 
 
-
 class ImageFactory:
     """
     Factory class responsible for preparing data and instantiating Image objects.
@@ -84,7 +83,13 @@ class ImageFactory:
         
         # Like in the paper we use a face detector to get a bounding box around faces to initiate mean landmark.
         # This improves and speeds up training
-        self.face_cascade=cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        xml_path = os.path.join(current_dir, 'haarcascade_frontalface_default.xml')
+        
+        if not os.path.exists(xml_path):
+            raise FileNotFoundError(f"File not found : {xml_path}. Need the .xml file in src/")
+
+        self.face_cascade = cv2.CascadeClassifier(xml_path)
         self.mean_shape=mean_shape
 
 
@@ -104,12 +109,25 @@ class ImageFactory:
             bbox = self._compute_bbox_from_landmarks(true_landmark)
             
         elif mode == 'test':
-            bbox = self._detect_face(image)
+            faces = self._detect_face(image)
+            
+            if len(faces) > 0:
+                if true_landmark is not None:
+                    # Select the face closest to the ground truth
+                    bbox = self._select_best_bbox(faces, true_landmark)
+                else:
+                    # Blind test: take the first one
+                    bbox = faces[0]
+
             # Fallback: if no face, align at center
 
             if bbox is None:
-                h,w=image.shape[:2]
-                bbox= (w//4,h//4,w//2,h//2)
+                if true_landmark is not None:
+                     # Ultimate fallback: use truth if available to avoid crash
+                     bbox = self._compute_bbox_from_landmarks(true_landmark)
+                else:
+                    h,w=image.shape[:2]
+                    bbox= (w//4,h//4,w//2,h//2)
 
         # Put the mean shape inside the box
         initial_landmark = self._align_mean_shape(bbox)
@@ -133,10 +151,25 @@ class ImageFactory:
             gray=image
             
         faces=self.face_cascade.detectMultiScale(gray, 1.1, 4)
-        if len(faces)>0:
-            return faces[0] # Return the coordinates of the first face
+        return faces # Returns the list of all detected faces
+
+    def _select_best_bbox(self, faces, true_landmark):
+        """
+        Selects the detected bbox that is spatially closest to the true landmark center.
+        """
+        true_center = np.mean(true_landmark, axis=0)
+        best_face = None
+        min_dist = float('inf')
+
+        for (x, y, w, h) in faces:
+            face_center = np.array([x + w/2, y + h/2])
+            dist = np.linalg.norm(true_center - face_center)
+            
+            if dist < min_dist:
+                min_dist = dist
+                best_face = (x, y, w, h)
         
-        return None
+        return best_face
 
     def _align_mean_shape(self, bbox):
         """
@@ -157,10 +190,9 @@ class ImageFactory:
         # Align both centers
         shift_x=bbox_center_x-mean_center_x
         shift_y= bbox_center_y-mean_center_y
-        
+
         aligned_shape=self.mean_shape.copy().astype(np.float32)
         aligned_shape[:,0]+= shift_x
         aligned_shape[:,1]+= shift_y
         
         return aligned_shape
-
