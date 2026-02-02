@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-class Image:
 
+class Image:
     """
     Class for images in order to store some info in a clean way:
         - the true landmark (during training mode)
@@ -12,7 +12,6 @@ class Image:
 
     def __init__(self,image,current_landmark,true_landmark) -> None:
         self.image=image
-        
         
         if len(self.image.shape)==3:
             self.image_gray=cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -79,7 +78,6 @@ class ImageFactory:
     """
 
     def __init__(self,mean_shape):
-
         
         # Like in the paper we use a face detector to get a bounding box around faces to initiate mean landmark.
         # This improves and speeds up training
@@ -102,12 +100,10 @@ class ImageFactory:
         """
         bbox=None
         if mode=='train':
-
             if true_landmark is None:
                 raise ValueError("In 'train' mode, true_landmark is required.")
-            
             bbox = self._compute_bbox_from_landmarks(true_landmark)
-            
+                    
         elif mode == 'test':
             faces = self._detect_face(image)
             
@@ -122,10 +118,6 @@ class ImageFactory:
             # Fallback: if no face, align at center
 
             if bbox is None:
-                if true_landmark is not None:
-                     # Ultimate fallback: use truth if available to avoid crash
-                     bbox = self._compute_bbox_from_landmarks(true_landmark)
-                else:
                     h,w=image.shape[:2]
                     bbox= (w//4,h//4,w//2,h//2)
 
@@ -142,7 +134,6 @@ class ImageFactory:
         return (min_x, min_y, max_x - min_x, max_y - min_y)
 
     def _detect_face(self, image):
-
         """Uses OpenCV Haar Cascade to find the face bbox."""
 
         if len(image.shape)==3:
@@ -173,26 +164,27 @@ class ImageFactory:
 
     def _align_mean_shape(self, bbox):
         """
-        Aligns the centered mean_shape to the center of the provided bbox.
+        Aligns AND SCALES the centered mean_shape to the center of the provided bbox.
         """
         x,y,w,h=bbox
         
-        # center of bbox
-        bbox_center_x=x+w/2
-        bbox_center_y=y+h/2
-        
-        # Centre of mean shape
-        mean_min =np.min(self.mean_shape,axis=0)
-        mean_max=np.max(self.mean_shape, axis=0)
+        bbox_center_x=x+w / 2
+        bbox_center_y=y+h/ 2
+        mean_min=np.min(self.mean_shape,axis=0)
+        mean_max=np.max(self.mean_shape,axis=0)
         mean_center_x=(mean_min[0]+mean_max[0])/2
         mean_center_y=(mean_min[1]+mean_max[1])/2
-        
-        # Align both centers
-        shift_x=bbox_center_x-mean_center_x
-        shift_y= bbox_center_y-mean_center_y
-
-        aligned_shape=self.mean_shape.copy().astype(np.float32)
-        aligned_shape[:,0]+= shift_x
-        aligned_shape[:,1]+= shift_y
+        mean_width = mean_max[0] - mean_min[0]
+        mean_height = mean_max[1] - mean_min[1]
+        scale_x = w / mean_width if mean_width > 0 else 1.0
+        scale_y = h / mean_height if mean_height > 0 else 1.0
+        scale = (scale_x + scale_y) / 2
+        scaling_factor = scale * 0.9 
+        aligned_shape = self.mean_shape.copy().astype(np.float32)
+        aligned_shape[:, 0] -= mean_center_x
+        aligned_shape[:, 1] -= mean_center_y
+        aligned_shape *= scaling_factor
+        aligned_shape[:, 0] += bbox_center_x
+        aligned_shape[:, 1] += bbox_center_y
         
         return aligned_shape
