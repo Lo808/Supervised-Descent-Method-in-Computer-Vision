@@ -35,11 +35,12 @@ class Image:
         It only analyse the keypoints at the landmark positions because that is what we want to regress
         Returns the descriptors from function 
         '''
-
-        keypoints = []
+        keypoints=[]
+  
         for point in self.current_landmark:
-            x,y=point
-            kp = cv2.KeyPoint(x=float(x), y=float(y), size=32) # size 32 is arbitrary here
+            x, y = point
+            # size is 32 like in the paper
+            kp = cv2.KeyPoint(x=float(x), y=float(y), size=32)
             keypoints.append(kp)
 
         keypoints,descriptors=extraction_function.compute(self.image_gray,keypoints)

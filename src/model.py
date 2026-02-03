@@ -2,6 +2,8 @@ from sklearn.linear_model import LinearRegression,Ridge
 import numpy as np
 import cv2
 import copy
+import matplotlib.pyplot as plt
+
 
 class SDM:
     def __init__(self,n_step=4,extraction_function=cv2.SIFT_create(),model=LinearRegression()) -> None:
@@ -145,3 +147,81 @@ class SDM:
         print(f"Mean NME  : {final_score:.4f} ({final_score*100:.2f}%)")
         
         return final_score, all_errors
+
+
+    def evaluate_in_pixels(self, test_data):
+        """
+        Compute the euclidian distance 
+        """
+        total_pixel_error = 0
+        total_points = 0
+        max_error = 0
+        worst_image_idx = -1
+        
+        errors_per_image = []
+
+        for idx, img_obj in enumerate(test_data):
+            # Prediction
+            pred_img = self.predict(img_obj)
+            pred_lm = pred_img.current_landmark
+            true_lm = img_obj.true_landmark
+            
+            # Euclidian distance
+            diff_vectors=pred_lm-true_lm
+            distances=np.linalg.norm(diff_vectors, axis=1)
+            mean_img_error=np.mean(distances)
+            max_img_error=np.max(distances)
+            
+            errors_per_image.append(mean_img_error)
+            total_pixel_error += np.sum(distances)
+            total_points += len(distances)
+            
+            # Worst case tracking
+            if mean_img_error > max_error:
+                max_error = mean_img_error
+                worst_image_idx = idx
+
+        global_mean_pixel_error = total_pixel_error / total_points
+    
+        
+        return global_mean_pixel_error, errors_per_image, worst_image_idx, max_error
+    
+
+    def visualize_error_vectors(self, test_data, image_indices=None):
+        """
+        Print error vectors, from prediction to truth
+        """
+        if image_indices is None:
+            image_indices = np.random.choice(len(test_data), 3, replace=False)
+            
+        for idx in image_indices:
+            img_obj = test_data[idx]
+            pred_img = self.predict(img_obj)
+            
+            pred_lm = pred_img.current_landmark.astype(int)
+            true_lm = img_obj.true_landmark.astype(int)
+
+            if len(img_obj.image.shape) == 3:
+                canvas = cv2.cvtColor(img_obj.image.copy(), cv2.COLOR_BGR2RGB)
+            else:
+                canvas = cv2.cvtColor(img_obj.image.copy(), cv2.COLOR_GRAY2RGB)
+        
+            diff = np.linalg.norm(pred_lm - true_lm, axis=1)
+            err_px = np.mean(diff)
+
+
+            for i in range(len(pred_lm)):
+                pt_pred = tuple(pred_lm[i])
+                pt_true = tuple(true_lm[i])
+
+                cv2.line(canvas, pt_pred, pt_true, (255, 0, 255), 1) 
+
+                cv2.circle(canvas, pt_pred, 2, (0, 255, 255), -1) # Cyan = Pred
+                cv2.circle(canvas, pt_true, 2, (0, 255, 0), -1)   # Vert = Vérité
+
+            plt.figure(figsize=(8, 8))
+            plt.imshow(canvas)
+            plt.title(f"Image {idx} - Mean error: {err_px:.1f} px\n Pink lines = Deplacement error")
+            plt.axis('off')
+            plt.legend(['Erreur', 'Pred (Cyan)', 'Vrai (Vert)']) # Légende indicative
+            plt.show()
