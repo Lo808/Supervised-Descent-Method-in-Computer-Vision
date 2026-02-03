@@ -24,7 +24,6 @@ class Image:
         self.true_landmark=true_landmark
         self.current_landmark=current_landmark
     
-
     def set_landmark(self,landmark):
         self.current_landmark=landmark
         pass
@@ -165,7 +164,7 @@ class ImageFactory:
 
     def _align_mean_shape(self, bbox):
         """
-        Aligns AND SCALES the centered mean_shape to the center of the provided bbox.
+        Aligns and scales the centered mean_shape to the center of the provided bbox.
         """
         x,y,w,h=bbox
         
@@ -187,5 +186,8 @@ class ImageFactory:
         aligned_shape *= scaling_factor
         aligned_shape[:, 0] += bbox_center_x
         aligned_shape[:, 1] += bbox_center_y
+
+        pixel_offset=h*0.15 # Important because face detector is around all face but the landmark are on the bottom of the face !
+        aligned_shape[:, 1] += pixel_offset
         
         return aligned_shape

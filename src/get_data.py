@@ -115,8 +115,7 @@ def calculate_iou(bbox1, bbox2):
 
 def filter_usable_images(raw_data, factory, iou_threshold=0.3):
     """
-    Filtre le dataset pour ne garder que les images où le détecteur de visage
-    trouve une bounding box cohérente avec la vérité terrain.
+    Filter the dataset to remove images where the cv2 face detector is not finding the face
     """
     cleaned_data = []
     rejected_count = 0
@@ -144,6 +143,56 @@ def filter_usable_images(raw_data, factory, iou_threshold=0.3):
             rejected_count += 1
             
     return cleaned_data, rejected_count
+
+def crop_and_resize(img, landmarks, target_size=250, padding=0.5):
+    """
+    Crop the face from the image to have same size, with padding if necessary
+    This function also modify the landmarks so they fit face after the cropping
+    """
+
+    min_x = np.min(landmarks[:, 0])
+    max_x = np.max(landmarks[:, 0])
+    min_y = np.min(landmarks[:, 1])
+    max_y = np.max(landmarks[:, 1])
+    width = max_x - min_x
+    height = max_y - min_y
+    center_x = min_x + width / 2
+    center_y = min_y + height / 2
+    
+    # get a square around face and padding
+    face_size = max(width, height)
+    crop_size = face_size * (1 + padding)
+
+    x1 = int(center_x - crop_size / 2)
+    y1 = int(center_y - crop_size / 2)
+    x2 = int(x1 + crop_size)
+    y2 = int(y1 + crop_size)
+    h_img, w_img = img.shape[:2]
+    pad_x1 = max(0, -x1)
+    pad_y1 = max(0, -y1)
+    pad_x2 = max(0, x2 - w_img)
+    pad_y2 = max(0, y2 - h_img)
+    
+    # Pad if needed
+    img_padded = cv2.copyMakeBorder(img, pad_y1, pad_y2, pad_x1, pad_x2, cv2.BORDER_CONSTANT)
+    
+    x1_pad = x1 + pad_x1
+    y1_pad = y1 + pad_y1
+    
+    face_crop = img_padded[y1_pad : y1_pad + int(crop_size), x1_pad : x1_pad + int(crop_size)]
+    
+    # Resize
+    try:
+        face_resized = cv2.resize(face_crop, (target_size, target_size))
+    except Exception as e:
+        return None, None
+
+    scale = target_size / crop_size
+    
+    new_landmarks = (landmarks - np.array([x1, y1])) * scale
+    
+    return face_resized, new_landmarks
+
 
 def get_data(data_folder, train_split=0.8,n_perturbations=10):
     """
@@ -233,72 +282,3 @@ def get_data(data_folder, train_split=0.8,n_perturbations=10):
         test_objects.append(obj)
             
     return train_objects, test_objects, mean_shape
-
-def crop_and_resize(img, landmarks, target_size=250, padding=0.5):
-    """
-    Découpe le visage autour des landmarks avec une marge (padding),
-    puis redimensionne l'image et ajuste les landmarks pour qu'ils matchent.
-    
-    Args:
-        img: Image originale (cv2)
-        landmarks: Landmarks originaux (numpy array)
-        target_size: Taille finale du carré (ex: 250 pixels)
-        padding: Pourcentage d'espace autour du visage (0.5 = 50% de marge)
-    """
-    # 1. Calcul de la Bounding Box des landmarks
-    min_x = np.min(landmarks[:, 0])
-    max_x = np.max(landmarks[:, 0])
-    min_y = np.min(landmarks[:, 1])
-    max_y = np.max(landmarks[:, 1])
-    
-    width = max_x - min_x
-    height = max_y - min_y
-    
-    # 2. Définition du carré de découpe (avec marge)
-    center_x = min_x + width / 2
-    center_y = min_y + height / 2
-    
-    # On prend la plus grande dimension pour faire un carré
-    face_size = max(width, height)
-    
-    # On ajoute la marge
-    crop_size = face_size * (1 + padding)
-    
-    # Coordonnées de découpe (Top-Left)
-    x1 = int(center_x - crop_size / 2)
-    y1 = int(center_y - crop_size / 2)
-    x2 = int(x1 + crop_size)
-    y2 = int(y1 + crop_size)
-    
-    # 3. Gestion des bords (Si le crop sort de l'image)
-    # On ajoute des bordures noires (padding) à l'image originale pour ne pas planter
-    h_img, w_img = img.shape[:2]
-    pad_x1 = max(0, -x1)
-    pad_y1 = max(0, -y1)
-    pad_x2 = max(0, x2 - w_img)
-    pad_y2 = max(0, y2 - h_img)
-    
-    # Agrandissement de l'image avec des bords noirs si nécessaire
-    img_padded = cv2.copyMakeBorder(img, pad_y1, pad_y2, pad_x1, pad_x2, cv2.BORDER_CONSTANT)
-    
-    # Recalcul des coordonnées de découpe dans l'image paddée
-    x1_pad = x1 + pad_x1
-    y1_pad = y1 + pad_y1
-    
-    # Découpe
-    face_crop = img_padded[y1_pad : y1_pad + int(crop_size), x1_pad : x1_pad + int(crop_size)]
-    
-    # 4. Redimensionnement final (Resize)
-    try:
-        face_resized = cv2.resize(face_crop, (target_size, target_size))
-    except Exception as e:
-        # Sécurité si le crop est vide
-        return None, None
-
-    # 5. TRANSFORMATION DES LANDMARKS (Crucial)
-    # Formule : (Ancien - Origine_Crop) * (Ratio_Scale)
-    scale = target_size / crop_size
-    
-    new_landmarks = (landmarks - np.array([x1, y1])) * scale
-    
-    return face_resized, new_landmarks
