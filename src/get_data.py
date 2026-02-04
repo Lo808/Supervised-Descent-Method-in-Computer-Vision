@@ -193,7 +193,6 @@ def crop_and_resize(img, landmarks, target_size=250, padding=0.5):
     
     return face_resized, new_landmarks
 
-
 def get_data(data_folder, train_split=0.8,n_perturbations=10):
     """
     Global prep function for our experiment:
